@@ -5,6 +5,7 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb')
 require('dotenv').config()
 const port = process.env.PORT || 5000
 const app = express()
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
 
 // middleware
 app.use(cors())
@@ -29,10 +30,85 @@ async function run() {
         const movieCollection = client.db("netfliex").collection("movie")
         const listsCollection = client.db("netfliex").collection("lists")
         const loginCollection = client.db("netfliex").collection("loginUser")
+        const seriesColloection = client.db("netfliex").collection("series")
 
-        const statsUserCollection = client.db("netfliex").collection("stats")
+        const paymentsCollection = client.db("netfliex").collection("payments")
+
+
+        // ---------------------------------------------------------------------------
+
+
+        app.post("/series", async (req, res) => {
+            const newUser = req.body
+            const result = await seriesColloection.insertOne(newUser)
+            res.send(result)
+        })
+
+
+        app.get("/series", async (req, res) => {
+            const query = {}
+            const cursor = seriesColloection.find(query)
+            const users = await cursor.toArray()
+            res.send(users)
+
+        })
+
+
+
+        // paynent
+        app.post('/create-payment-intent', async (req, res) => {
+            const service = req.body
+            const totalprice = service.totalprice
+            const amount = totalprice * 100
+            // const paymentIntent = await stripe.paymentIntents.create
+            const paymentIntent = await stripe.paymentIntents.create({
+                amount: amount,
+                currency: "usd",
+                payment_method_types: ['card']
+            })
+            res.send({ clientSecret: paymentIntent.client_secret })
+        })
+
+
+
+        app.patch("/loginuser/:email", async (req, res) => {
+            const email = req.params.email
+            const payment = req.body
+            const filter = { email: email }
+
+            const updatedDoc = {
+                $set: {
+                    paid: true,
+                    transactionId: payment.transactionId,
+                }
+            }
+            const updatedOrder = await orderCollection.updateOne(filter, updatedDoc)
+            const result = await paymentsCollection.insertOne(payment)
+            res.send(updatedDoc)
+        })
+
+
+
+
+
+
+
+
+
+
 
         // -------user----------------------------------------------------------------------
+
+
+        // My items
+        app.get('/loginuser/:email', async (req, res) => {
+            const email = req.params.email
+            const query = { email: email }
+            const cursor = await loginCollection.find(query).toArray()
+            res.send(cursor)
+        })
+
+
 
 
         app.post("/loginuser", async (req, res) => {
@@ -40,6 +116,8 @@ async function run() {
             const result = await loginCollection.insertOne(newUser)
             res.send(result)
         })
+
+
 
         app.get("/loginuser", async (req, res) => {
             const query = {}
@@ -218,31 +296,6 @@ async function run() {
         })
 
         app.get("/lists", async (req, res) => {
-
-
-            // const typeQuery = req.query.type
-            // const genreQuery = req.query.genre
-            // let list = []
-            // if (typeQuery) {
-            //     if (genreQuery) {
-            //         list = await listsCollection.aggregate([
-            //             { $sample: { size: 10 } },
-            //             { $match: { type: typeQuery, genre: genreQuery } },
-            //         ])
-            //     }
-            //     else {
-            //         list = await listsCollection.aggregate([
-            //             { $sample: { size: 10 } },
-            //             { $match: { type: typeQuery } },
-            //         ])
-            //     }
-
-            // } else {
-            //     list = await listsCollection.aggregate([{ $sample: { size: 10 } }])
-            // }
-
-
-            // res.status(200).json(list)
 
             const query = {}
             const cursor = listsCollection.find(query).limit(10)
